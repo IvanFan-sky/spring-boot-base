@@ -1,28 +1,37 @@
 package com.example.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.common.api.Result;
-import com.example.entity.User;
 import com.example.dto.LoginDTO;
+import com.example.entity.User;
+import com.example.security.AuthService;
+import com.example.security.UserPrincipal;
 import com.example.service.UserService;
 import com.example.vo.LoginVO;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * 用户控制器
  */
+@Slf4j
 @RestController
 @RequestMapping("/user")
-@Api(tags = "用户管理")
 @RequiredArgsConstructor
+@Api(tags = "用户接口")
 public class UserController {
 
     private final UserService userService;
+    private final AuthService authService;
 
     /**
      * 用户注册
@@ -46,8 +55,64 @@ public class UserController {
     @PostMapping("/login")
     @ApiOperation("用户登录")
     public Result<LoginVO> login(@Validated @RequestBody LoginDTO loginDTO) {
-        LoginVO loginVO = userService.login(loginDTO);
+        // 登录认证
+        String token = authService.login(loginDTO.getUsername(), loginDTO.getPassword());
+
+        // 获取用户信息
+        UserPrincipal userPrincipal = (UserPrincipal) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+
+        // 构建返回对象
+        LoginVO loginVO = new LoginVO()
+                .setId(userPrincipal.getId())
+                .setUsername(userPrincipal.getUsername())
+                .setNickname(userPrincipal.getNickname())
+                .setToken(token);
+
         return Result.success(loginVO);
+    }
+
+    /**
+     * 用户登出
+     * 实现步骤：
+     * 1. 获取当前用户信息（用于日志记录）
+     * 2. 清除认证上下文
+     * 3. 返回成功响应
+     *
+     * @return 操作结果
+     */
+    @PostMapping("/logout")
+    @ApiOperation("用户登出")
+    public Result<Void> logout(HttpServletRequest request) {
+        try {
+            // 1. 获取当前用户信息（用于日志记录）
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null) {
+                String username = authentication.getName();
+                log.info("用户[{}]已成功登出系统", username);
+            }
+
+            // 2. 清除认证上下文
+            authService.logout();
+
+            return Result.success();
+        } catch (Exception e) {
+            log.error("用户登出失败", e);
+            return Result.failed("登出失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取当前用户信息
+     *
+     * @return 用户信息
+     */
+    @GetMapping("/info")
+    @ApiOperation("获取当前用户信息")
+    public Result<UserPrincipal> getCurrentUser() {
+        UserPrincipal userPrincipal = (UserPrincipal) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        return Result.success(userPrincipal);
     }
 
     /**
@@ -73,12 +138,12 @@ public class UserController {
      */
     @GetMapping("/list")
     @ApiOperation("获取用户列表")
-    public Result<Page<User>> list(
-            @ApiParam("页码") @RequestParam(defaultValue = "1") Integer pageNum,
-            @ApiParam("每页数量") @RequestParam(defaultValue = "10") Integer pageSize,
-            @ApiParam("搜索关键词") @RequestParam(required = false) String keyword
+    public Result<com.baomidou.mybatisplus.extension.plugins.pagination.Page<User>> list(
+            @io.swagger.annotations.ApiParam("页码") @RequestParam(defaultValue = "1") Integer pageNum,
+            @io.swagger.annotations.ApiParam("每页数量") @RequestParam(defaultValue = "10") Integer pageSize,
+            @io.swagger.annotations.ApiParam("搜索关键词") @RequestParam(required = false) String keyword
     ) {
-        Page<User> page = userService.listUsers(pageNum, pageSize, keyword);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<User> page = userService.listUsers(pageNum, pageSize, keyword);
         return Result.success(page);
     }
 

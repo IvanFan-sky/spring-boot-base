@@ -1,9 +1,10 @@
 package com.example.util;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import com.example.security.UserPrincipal;
+import io.jsonwebtoken.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -12,23 +13,24 @@ import java.util.Date;
  * JWT工具类
  * 用于生成和解析JWT token
  */
+@Slf4j
 @Component
 public class JwtUtil {
-    
+
     /**
      * JWT密钥
      * 从配置文件中读取，用于token的签名
      */
-    @Value("${jwt.secret:your-secret-key}")
-    private String secret;
-    
+    @Value("${jwt.secret}")
+    private String jwtSecret;
+
     /**
      * token有效期（毫秒）
      * 默认24小时
      */
-    @Value("${jwt.expiration:86400000}")
-    private long expiration;
-    
+    @Value("${jwt.expiration}")
+    private int jwtExpirationInMs;
+
     /**
      * 生成JWT token
      * 生成过程：
@@ -37,24 +39,26 @@ public class JwtUtil {
      * 3. 设置token的过期时间
      * 4. 使用密钥对token进行签名
      *
-     * @param userId 用户ID
+     * @param authentication 用户认证信息
      * @return JWT token
      */
-    public String generateToken(Long userId) {
+    public String generateToken(Authentication authentication) {
+        UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+
         // 获取当前时间
         Date now = new Date();
         // 计算过期时间
-        Date expiryDate = new Date(now.getTime() + expiration);
-        
+        Date expiryDate = new Date(now.getTime() + jwtExpirationInMs);
+
         // 构建并返回token
         return Jwts.builder()
-                .setSubject(String.valueOf(userId))  // 设置主题（用户ID）
-                .setIssuedAt(now)                    // 设置签发时间
+                .setSubject(Long.toString(userPrincipal.getId()))  // 设置主题（用户ID）
+                .setIssuedAt(new Date())                    // 设置签发时间
                 .setExpiration(expiryDate)           // 设置过期时间
-                .signWith(SignatureAlgorithm.HS512, secret.getBytes())  // 设置签名
+                .signWith(SignatureAlgorithm.HS512, jwtSecret)  // 设置签名
                 .compact();
     }
-    
+
     /**
      * 从token中获取用户ID
      * 解析过程：
@@ -68,33 +72,39 @@ public class JwtUtil {
     public Long getUserIdFromToken(String token) {
         // 解析token
         Claims claims = Jwts.parser()
-                .setSigningKey(secret.getBytes())
+                .setSigningKey(jwtSecret)
                 .parseClaimsJws(token)
                 .getBody();
-        
+
         // 返回用户ID
         return Long.parseLong(claims.getSubject());
     }
-    
+
     /**
      * 验证token是否有效
      * 验证过程：
      * 1. 验证token的签名
      * 2. 检查token是否过期
      *
-     * @param token JWT token
+     * @param authToken JWT token
      * @return token是否有效
      */
-    public boolean validateToken(String token) {
+    public boolean validateToken(String authToken) {
         try {
             // 解析token（如果token无效会抛出异常）
-            Jwts.parser()
-                    .setSigningKey(secret.getBytes())
-                    .parseClaimsJws(token);
-            
+            Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(authToken);
             return true;
-        } catch (Exception e) {
-            return false;
+        } catch (SignatureException ex) {
+            log.error("Invalid JWT signature");
+        } catch (MalformedJwtException ex) {
+            log.error("Invalid JWT token");
+        } catch (ExpiredJwtException ex) {
+            log.error("Expired JWT token");
+        } catch (UnsupportedJwtException ex) {
+            log.error("Unsupported JWT token");
+        } catch (IllegalArgumentException ex) {
+            log.error("JWT claims string is empty");
         }
+        return false;
     }
 }

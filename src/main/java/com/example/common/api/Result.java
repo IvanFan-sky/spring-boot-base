@@ -99,4 +99,20 @@ public class Result<T> implements Serializable {
     public static <T> Result<T> failed(IErrorCode errorCode) {
         return new Result<>(errorCode.getCode(), errorCode.getMessage(), null);
     }
+
+    /**
+     * 未授权返回结果
+     */
+    public static <T> Result<T> unauthorized() {
+        return new Result<>(ResultCode.UNAUTHORIZED.getCode(), ResultCode.UNAUTHORIZED.getMessage(), null);
+    }
+
+    /**
+     * 未授权返回结果
+     *
+     * @param message 提示信息
+     */
+    public static <T> Result<T> unauthorized(String message) {
+        return new Result<>(ResultCode.UNAUTHORIZED.getCode(), message, null);
+    }
 }

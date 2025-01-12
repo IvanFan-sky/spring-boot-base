@@ -4,15 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.common.exception.ApiException;
-import com.example.dto.LoginDTO;
 import com.example.entity.User;
 import com.example.mapper.UserMapper;
 import com.example.service.UserService;
-import com.example.util.JwtUtil;
-import com.example.util.MD5Util;
-import com.example.vo.LoginVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,14 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
  * @since 2025-01-11
  */
 @Slf4j
-@Service  // 标记这是一个服务类，会被Spring自动扫描并注册为Bean
+@Service
 @RequiredArgsConstructor
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
     /**
-     * JWT工具类，用于生成和验证token
+     * 密码加密器
      */
-    private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
 
     /**
      * 用户注册
@@ -55,64 +52,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new ApiException("用户名已存在");
         }
 
-        // 对密码进行MD5加密
-        user.setPassword(MD5Util.encode(user.getPassword()));
+        // 加密密码
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         log.debug("密码加密完成");
         
         // 设置用户状态为启用
         user.setStatus(1);
         
         // 保存用户信息
-        save(user);  // 这个save方法继承自ServiceImpl
+        save(user);
         log.info("用户注册成功: {}", user.getUsername());
-    }
-
-    /**
-     * 登录
-     *
-     * @param loginDTO 登录信息
-     * @return 登录结果
-     */
-    @Override
-    public LoginVO login(LoginDTO loginDTO) {
-        log.info("用户登录: {}", loginDTO.getUsername());
-        
-        // 根据用户名查询用户
-        User user = lambdaQuery()
-                .eq(User::getUsername, loginDTO.getUsername())
-                .one();
-
-        // 验证用户是否存在
-        if (user == null) {
-            log.warn("用户名不存在: {}", loginDTO.getUsername());
-            throw new ApiException("用户名或密码错误");
-        }
-
-        // 验证密码是否正确
-        if (!MD5Util.matches(loginDTO.getPassword(), user.getPassword())) {
-            log.warn("密码错误, 用户名: {}", loginDTO.getUsername());
-            throw new ApiException("用户名或密码错误");
-        }
-
-        // 验证用户状态
-        if (user.getStatus() != 1) {
-            log.warn("账号已被禁用, 用户名: {}", loginDTO.getUsername());
-            throw new ApiException("账号已被禁用");
-        }
-
-        // 生成JWT token
-        String token = jwtUtil.generateToken(user.getId());
-        log.debug("生成token成功");
-
-        // 返回登录结果
-        LoginVO loginVO = new LoginVO()
-                .setId(user.getId())
-                .setUsername(user.getUsername())
-                .setNickname(user.getNickname())
-                .setToken(token);
-                
-        log.info("用户登录成功: {}", loginDTO.getUsername());
-        return loginVO;
     }
 
     /**
@@ -137,8 +86,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .like(keyword != null, User::getNickname, keyword)
                 .orderByDesc(User::getCreateTime);
         
-        // 执行分页查询并返回结果
-        Page<User> result = page(page, wrapper);  // 这个page方法继承自ServiceImpl
+        // 执行分页查询
+        Page<User> result = page(page, wrapper);
         log.info("查询到{}条用户记录", result.getTotal());
         return result;
     }
